@@ -16,11 +16,13 @@ I needed to move the database set-up to a separate project so that Claude code d
 1. Open `pyproject.toml` and prompt PyCharm to create a new uv environment.
 
 ## Demo steps
+For best results, run this demo using Claude Agent in "Bypass Permissions" mode and with Opus 4.7.
+
 Depending on what people want to see, there's the option to show:
 1. How easily you can create a new project using uv (don't create the project, just show the "New Project" window).
 2. How you can use the Python Packages tool window to install packages straight into your uv environment.
 3. Show the Database tool window, explain all the supported databases.
-4. Show the AI Chat window and the support for different agents, and how this is relatively plug-and-play for the major agents.
+4. Show the AI Chat window and the support for different agents, and how this is relatively plug-and-play for the major agents. The set up with skills and agents.md files is the same.
 5. Show the project set up for Claude Code in this project, and explain the role of the Claude.md file versus skills.
 6. Show the skills manager, and how they're automatically detected by PyCharm.
 7. Show /explore_db skill. Ask natural language queries about the data and at the end ask for the following:

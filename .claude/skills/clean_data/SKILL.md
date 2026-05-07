@@ -19,6 +19,22 @@ trigger: "clean_data"
 ## On startup — check runtime variables FIRST
 
 Read the `NotebookRuntimeVariablesRetrieverSource` attachment immediately.
+Do not ask any questions. Do not run any cells yet.
+
+### Finding df_raw
+Look for any DataFrame variable in the runtime attachment whose columns
+match a plausible dataset (i.e. not named `issues_df`, `missing_df`,
+`df_features`, or `df_clean`). It does not matter how it was created —
+SQL cell magic, pandas read_sql, read_csv, or any other method. The only
+requirement is that it exists as a DataFrame in the kernel.
+
+If `df_raw` is present → use it directly.
+If `df_raw` is absent but another DataFrame is present that looks like the
+source data → use that and mentally treat it as `df_raw`. Do NOT tell the
+user it's missing — just proceed with what's there.
+If NO suitable DataFrame is present at all → tell the user:
+"No source DataFrame found in the notebook kernel. Please run your data
+loading cell first, then type `clean_data` again."
 
 ### If `issues_df` is present in the runtime variables:
 The audit has already been run. Do NOT execute any cells.
