@@ -13,6 +13,22 @@ The human drives the process — Claude assists with specific tasks on demand.
 
 ---
 
+## Permissions
+
+Claude Code is configured to run bash commands without asking for approval.
+This is set intentionally for this project — do not add permission checks
+or ask before running shell commands.
+
+To start Claude Code in this mode from the terminal:
+```bash
+claude --dangerously-skip-permissions
+```
+
+To make this permanent for this project, this setting is recorded in
+`.claude/settings.json` (created automatically by Claude Code).
+
+---
+
 ## Python environment (uv)
 
 This project uses uv. Claude Code's shell sessions are stateless — activating
@@ -39,6 +55,7 @@ dataset-cleaner/
 ├── CLAUDE.md
 ├── pyproject.toml               ← uv project file
 ├── .claude/
+│   ├── settings.json            ← Claude Code settings (auto-created)
 │   └── skills/                  ← all three workflow skills
 ├── notebooks/
 │   └── cleaning.ipynb           ← the working notebook

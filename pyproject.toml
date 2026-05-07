@@ -1,0 +1,17 @@
+[project]
+name = "dataset-cleaner"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "duckdb>=1.5.2",
+    "ipywidgets>=8.1.8",
+    "kagglehub>=1.0.1",
+    "notebook>=7.5.6",
+    "pandas>=3.0.2",
+    "psycopg2-binary>=2.9.12",
+    "pyarrow>=24.0.0",
+    "pyyaml>=6.0.3",
+    "scipy>=1.17.1",
+    "scipy-stubs~=1.17.1",
+    "sqlalchemy>=2.0.49",
+]
