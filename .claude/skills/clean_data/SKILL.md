@@ -16,44 +16,45 @@ trigger: "clean_data"
 
 ---
 
-## On startup — check runtime variables FIRST
+## On startup — three-stage check, in order
 
-Read the `NotebookRuntimeVariablesRetrieverSource` attachment immediately.
-Do not ask any questions. Do not run any cells yet.
+Do not ask any questions. Do not run any cells yet. Work through these
+three checks in order and stop at the first one that succeeds.
 
-### Finding df_raw
-Look for any DataFrame variable in the runtime attachment whose columns
-match a plausible dataset (i.e. not named `issues_df`, `missing_df`,
-`df_features`, or `df_clean`). It does not matter how it was created —
-SQL cell magic, pandas read_sql, read_csv, or any other method. The only
-requirement is that it exists as a DataFrame in the kernel.
+### Check 1 — demo_issues.json (fastest path)
 
-If `df_raw` is present → use it directly.
-If `df_raw` is absent but another DataFrame is present that looks like the
-source data → use that and mentally treat it as `df_raw`. Do NOT tell the
-user it's missing — just proceed with what's there.
-If NO suitable DataFrame is present at all → tell the user:
-"No source DataFrame found in the notebook kernel. Please run your data
-loading cell first, then type `clean_data` again."
+Use `mcp__pycharm__get_file_text_by_path` to read `data/demo_issues.json`.
 
-### If `issues_df` is present in the runtime variables:
-The audit has already been run. Do NOT execute any cells.
-Read the issues directly from the attachment:
-- `issues_df` contains the ranked issue list
-- `missing_df` contains the missingness summary
-- `n_dup` contains the duplicate count
-- `df_raw` shape is available from the attachment
+If the file exists and is valid JSON:
+- Load the issues list from it directly
+- Note the dataset name, target column, and shape from the file
+- Skip Check 2 and Check 3 entirely
+- Go directly to **Step 2** — present the issue list and first fix
 
-Go directly to **Step 2** — present the issue list and first fix immediately.
+If the file does not exist, proceed to Check 2.
 
-### If `issues_df` is NOT present in the runtime variables:
-Run the audit cell in **Step 1** once, then go to **Step 2**.
+### Check 2 — runtime variables attachment
 
-### If `df_clean` is present in the runtime variables:
-The workflow has already been partially completed in a previous session.
-Tell the user: "It looks like cleaning is already in progress — df_clean
-exists with [shape]. Would you like to continue from where you left off,
-or start fresh? (continue / restart)"
+Read the `NotebookRuntimeVariablesRetrieverSource` attachment.
+
+If `issues_df` is present in the runtime variables:
+- Read the issues directly from the attachment
+- Go directly to **Step 2**
+
+If `issues_df` is absent but a source DataFrame is present (any DataFrame
+not named `issues_df`, `missing_df`, `df_features`, or `df_clean`):
+- Treat it as `df_raw` regardless of its actual variable name
+- Proceed to Check 3
+
+If NO DataFrame is present at all:
+- Tell the user: "No source DataFrame found. Please run your data loading
+  cell first, then type `clean_data` again."
+- Stop.
+
+### Check 3 — run the audit cell
+
+No pre-computed issues are available. Run the audit cell in **Step 1**
+once, then go to **Step 2**.
 
 ---
 
@@ -164,36 +165,72 @@ df_clean = df_raw.copy()
 
 ## Fix templates
 
-### Missingness
+### Using distribution metadata
 
-Determine mechanism from data already in memory — no new cell needed:
-- Compute point-biserial correlation between missingness indicator and
-  numeric columns using values already available in the runtime variables
+If the issue was loaded from `demo_issues.json` and has a `distribution`
+object, use it as follows — do not ask questions that the metadata already
+answers:
 
-| Condition | Fix |
-|-----------|-----|
-| < 1% | Fill: numeric → mean, categorical → mode |
-| 1–30%, MCAR | KNN imputation (k=5) |
-| 1–30%, MAR | Iterative imputation |
-| Possible MNAR | Indicator column + median fill |
-| > 30% | Drop column |
+- Use `distribution.iqr_collapse_reason` to explain WHY the outlier was
+  flagged, presented as context before the fix proposal
+- Use `distribution.recommended_treatment` as the basis for the fix —
+  do not override it with generic IQR/z-score logic
+- Use `distribution.mechanism` and `distribution.mechanism_evidence` for
+  missingness issues — do not run a correlation check
+- Present the distribution stats (zeros_pct, median, IQR, etc.) as a
+  brief context table before the fix proposal
 
-**Markdown cell:**
-```markdown
-### Missingness: `<col>`
-- Missing: <N> (<X>%)  |  Mechanism: <MCAR/MAR/MNAR>
-- Fix: <method>  |  Rationale: <one sentence>
+If no `distribution` metadata is available, fall back to the standard
+decision trees below.
+
+---
+
+### Outliers — with distribution metadata
+
+Present in this format:
+
+```
+**Distribution of `<col>`:**
+<render the key distribution fields as a small table>
+
+**Why it was flagged:** <iqr_collapse_reason>
+
+**Proposed fix:**
+<recommended_treatment, translated into concrete code>
 ```
 
-**Code cell:**
+No questions — the metadata already contains the interpretation.
+
+#### capital-gain (zero-inflated pattern)
+
 ```python
-# Missingness: <col>
-print(f"Before: {df_clean['<col>'].isnull().sum()} missing")
-<fix code>
-print(f"After:  {df_clean['<col>'].isnull().sum()} missing")
+# Outliers: capital-gain (zero-inflated)
+# Step 1: binary indicator for non-zero values
+df_clean["capital_gain_nonzero"] = (df_clean["capital-gain"] > 0).astype(int)
+
+# Step 2: log1p transform of non-zero values
+df_clean["capital_gain_log1p"] = np.log1p(df_clean["capital-gain"])
+
+# Step 3: flag top-coded sentinel values
+df_clean["capital_gain_topcoded"] = (df_clean["capital-gain"] == 99999).astype(int)
+
+print(f"Non-zero rows:    {df_clean['capital_gain_nonzero'].sum():,}")
+print(f"Top-coded rows:   {df_clean['capital_gain_topcoded'].sum():,}")
+print(f"Log1p range:      {df_clean['capital_gain_log1p'].min():.2f} – {df_clean['capital_gain_log1p'].max():.2f}")
 ```
 
-### Outliers
+#### hours-per-week (narrow distribution with tails)
+
+```python
+# Outliers: hours-per-week (narrow IQR, valid tails)
+from scipy.stats.mstats import winsorize
+df_clean["hours-per-week"] = winsorize(
+    df_clean["hours-per-week"], limits=[0.01, 0.01]
+).astype(float)
+print(f"New range: [{df_clean['hours-per-week'].min():.0f}, {df_clean['hours-per-week'].max():.0f}] hours")
+```
+
+#### Outliers — without distribution metadata (fallback)
 
 Ask ONE question only:
 "Are the outliers in `<col>` data errors (a) or genuine extremes (b)?"
@@ -203,45 +240,81 @@ Ask ONE question only:
 | a | Remove rows outside IQR 3× fence |
 | b | skew > 1.0 → log1p transform; skew ≤ 1.0 → Winsorize 1/99th pct |
 
-**Markdown cell:**
-```markdown
-### Outliers: `<col>`
-- Outliers: <N> (<X>%)  |  Interpretation: <error/genuine>
-- Fix: <method>  |  Affected: <N> rows
+---
+
+### Missingness — with distribution metadata
+
+Present in this format:
+
+```
+**`<col>`:** <missing_count> missing (<missing_pct>%)
+**Mechanism:** <mechanism> — <mechanism_evidence>
+**Proposed fix:** <recommended_treatment, translated into code>
 ```
 
-**Code cell:**
+No mechanism diagnosis needed — read it directly from the metadata.
+
+#### hours-per-week (MAR)
+
 ```python
-# Outliers: <col>
-print(f"Before: min={df_clean['<col>'].min():.4g}, max={df_clean['<col>'].max():.4g}, n={len(df_clean)}")
-<fix code>
-print(f"After:  min={df_clean['<col>'].min():.4g}, max={df_clean['<col>'].max():.4g}, n={len(df_clean)}")
+# Missingness: hours-per-week (MAR — iterative imputation)
+from sklearn.impute import IterativeImputer
+from sklearn.linear_model import BayesianRidge
+
+numeric_cols = df_clean.select_dtypes(include=np.number).columns.tolist()
+imputer = IterativeImputer(estimator=BayesianRidge(), max_iter=10, random_state=42)
+print(f"Before: {df_clean['hours-per-week'].isnull().sum()} missing")
+df_clean[numeric_cols] = imputer.fit_transform(df_clean[numeric_cols])
+print(f"After:  {df_clean['hours-per-week'].isnull().sum()} missing")
 ```
+
+#### workclass (MNAR)
+
+```python
+# Missingness: workclass (MNAR — indicator + mode fill)
+df_clean["workclass_was_missing"] = df_clean["workclass"].isnull().astype(int)
+mode_val = df_clean["workclass"].mode()[0]
+df_clean["workclass"] = df_clean["workclass"].fillna(mode_val)
+print(f"Missing workclass filled with '{mode_val}'")
+print(f"workclass_was_missing: {df_clean['workclass_was_missing'].sum():,} rows flagged")
+```
+
+#### Missingness — without distribution metadata (fallback)
+
+| Condition | Fix |
+|-----------|-----|
+| < 1% | Fill: numeric → mean, categorical → mode |
+| 1–30%, MCAR | KNN imputation (k=5) |
+| 1–30%, MAR | Iterative imputation |
+| Possible MNAR | Indicator column + median/mode fill |
+| > 30% | Drop column |
+
+---
 
 ### Duplicates
 
-No question — propose immediately:
+No question — propose immediately regardless of whether metadata is present:
 
-```
-Fix: Drop exact duplicates, keep first. Removes <N> rows → <N_remaining> remaining.
-
-  df_clean = df_clean.drop_duplicates(keep="first").reset_index(drop=True)
-```
-
-**Markdown cell:**
-```markdown
-### Duplicates
-- Exact duplicates: <N> rows (<X>%)
-- Fix: Drop duplicates, keep first occurrence
-```
-
-**Code cell:**
 ```python
 # Duplicates
 print(f"Before: {len(df_clean):,} rows")
 df_clean = df_clean.drop_duplicates(keep="first").reset_index(drop=True)
 print(f"After:  {len(df_clean):,} rows")
 ```
+
+---
+
+### Markdown and code cell format (all issue types)
+
+**Markdown cell:**
+```markdown
+### <Issue type>: `<col>`
+- <key stats from distribution metadata or computed values>
+- Mechanism/interpretation: <one sentence>
+- Fix: <method>  |  Rationale: <one sentence>
+```
+
+**Code cell:** use the templates above, wrapped with before/after prints.
 
 ---
 

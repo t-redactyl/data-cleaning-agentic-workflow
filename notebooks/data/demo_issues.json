@@ -1,0 +1,101 @@
+{
+  "dataset": "Adult Income",
+  "target_column": "income",
+  "shape": [32561, 13],
+  "generated": "2026-05-07",
+  "issues": [
+    {
+      "index": 1,
+      "type": "outlier",
+      "column": "capital-gain",
+      "detail": "IQR outliers: 2,712 | z-score outliers: 215",
+      "severity": "high",
+      "distribution": {
+        "pattern": "zero_inflated",
+        "zeros_pct": 91.7,
+        "zeros_count": 29849,
+        "non_zero_count": 2712,
+        "non_zero_distinct_values": 118,
+        "non_zero_median": 7298,
+        "non_zero_p75": 14084,
+        "non_zero_p95": 99999,
+        "max": 99999,
+        "top_coded_count": 159,
+        "top_coded_sentinel": 99999,
+        "iqr_collapse_reason": "Q1 = Q3 = 0 because 91.7% of values are zero, so IQR = 0 and the fence collapses — every non-zero value appears as an outlier. This is not a true outlier problem; it is zero inflation.",
+        "recommended_treatment": "The 99,999 sentinel value indicates top-coding (values above a threshold were capped at 99,999 in the original census data). Recommended fix: (1) create a binary indicator column `capital_gain_nonzero`, (2) among non-zero values, apply log1p transform to compress the right skew, (3) flag the 159 top-coded rows with a `capital_gain_topcoded` indicator. Do NOT remove rows or apply IQR-based removal — the zeros are structural, not errors."
+      }
+    },
+    {
+      "index": 2,
+      "type": "outlier",
+      "column": "hours-per-week",
+      "detail": "IQR outliers: 3,826 | z-score outliers: 363",
+      "severity": "high",
+      "distribution": {
+        "pattern": "narrow_with_tails",
+        "mean": 40.4,
+        "median": 40.0,
+        "mode": 40.0,
+        "mode_pct": 47.9,
+        "std": 12.3,
+        "min": 1,
+        "max": 99,
+        "p25": 40.0,
+        "p75": 45.0,
+        "iqr": 5.0,
+        "iqr_fence_lower": 25.0,
+        "iqr_fence_upper": 60.0,
+        "outliers_below_fence": 1842,
+        "outliers_above_fence": 1984,
+        "iqr_collapse_reason": "The IQR is only 5 hours (40–45) because nearly half the dataset works exactly 40 hours/week. This makes the 3x IQR fence very tight (25–60 hours), flagging anyone working part-time or long hours as an outlier. These are real, valid work patterns — not data errors.",
+        "recommended_treatment": "Winsorize at the 1st and 99th percentile (roughly 10–80 hours) to preserve the full range of real working patterns while dampening extreme values. Do NOT remove rows — part-time and overtime workers are valid and likely informative for predicting income."
+      }
+    },
+    {
+      "index": 3,
+      "type": "duplicates",
+      "column": "ALL",
+      "detail": "3,491 exact duplicate rows (10.7%)",
+      "severity": "high",
+      "distribution": {
+        "duplicate_count": 3491,
+        "duplicate_pct": 10.7,
+        "recommended_treatment": "Drop duplicates keeping first occurrence. The Adult Income dataset is known to contain duplicate rows from the original census extraction. These are true duplicates, not legitimate repeated observations."
+      }
+    },
+    {
+      "index": 4,
+      "type": "missingness",
+      "column": "hours-per-week",
+      "detail": "4,784 missing (14.7%)",
+      "severity": "medium",
+      "distribution": {
+        "missing_count": 4784,
+        "missing_pct": 14.7,
+        "dtype": "float64",
+        "mechanism": "MAR",
+        "mechanism_evidence": "Missingness in hours-per-week correlates with workclass (self-employed and without-pay categories have higher missingness rates), suggesting the values are Missing At Random conditional on employment type.",
+        "recommended_treatment": "Iterative imputation using correlated columns (workclass, occupation, age) as predictors. KNN is also acceptable. Do not use mean imputation — 14.7% is too high and the narrow distribution around 40hrs means mean imputation would mask meaningful variation."
+      }
+    },
+    {
+      "index": 5,
+      "type": "missingness",
+      "column": "workclass",
+      "detail": "1,320 missing (4.1%)",
+      "severity": "low",
+      "distribution": {
+        "missing_count": 1320,
+        "missing_pct": 4.1,
+        "dtype": "object",
+        "unique_values": ["Private", "Self-emp-not-inc", "Self-emp-inc", "Federal-gov", "Local-gov", "State-gov", "Without-pay", "Never-worked"],
+        "most_common": "Private",
+        "most_common_pct": 69.4,
+        "mechanism": "MNAR",
+        "mechanism_evidence": "Missing workclass likely indicates non-disclosure or non-standard employment status. The fact that it is missing may itself be informative — people who do not report workclass may have different income patterns.",
+        "recommended_treatment": "Two-step: (1) create binary indicator column `workclass_was_missing`, (2) fill missing values with the mode ('Private') as a conservative imputation. The indicator column preserves the signal from non-disclosure for the model."
+      }
+    }
+  ]
+}
